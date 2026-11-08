@@ -1,5 +1,5 @@
 // Bump VERSION whenever you change index.html so your devices pick up the new copy.
-const VERSION = "daily-stuff-mine-v2";
+const VERSION = "daily-stuff-mine-v4";
 const SHELL = ["./", "index.html", "firebase-config.js", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 
 self.addEventListener("install", e => {

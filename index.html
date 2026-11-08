@@ -845,11 +845,19 @@ function syncCard(){
     <input class="dash-search" style="margin:0 0 8px;box-shadow:none;background:var(--surface-2)" id="fbEmail" type="email" autocomplete="email" placeholder="Email" value="${esc(st.email||"")}">
     <input class="dash-search" style="margin:0 0 10px;box-shadow:none;background:var(--surface-2)" id="fbPass" type="password" autocomplete="current-password" placeholder="Password (6+ characters)">
     <div class="toolbar" style="margin:0"><button class="btn" data-act="fbsignin">Sign in</button><button class="btn ghost" data-act="fbsignup">Create account</button></div>
-    ${st.msg?`<p class="sub" style="margin:8px 0 0;color:var(--warn)">${esc(st.msg)}</p>`:""}`;
+    <button class="back" data-act="fbreset" style="font-size:13px;padding:10px 0 0">Forgot password?</button>
+    ${st.msg?`<p class="sub" style="margin:8px 0 0;color:${st.ok?"var(--primary)":"var(--warn)"}">${esc(st.msg)}</p>`:""}`;
   else if(st.status==="signedin") inner = `<p style="margin:0 0 4px;font-weight:600">Signed in as ${esc(st.email||"")}</p><p class="sub" style="margin:0 0 10px">${esc(document.getElementById("sync").textContent)}</p><button class="btn ghost" data-act="fbsignout">Sign out</button>`;
   return `<h2>Sync</h2><div class="card" style="padding:14px">${inner}</div>`;
 }
-const FB_ERR = {"auth/invalid-credential":"Wrong email or password.","auth/wrong-password":"Wrong email or password.","auth/user-not-found":"No account with that email yet – tap Create account.","auth/email-already-in-use":"That email already has an account – tap Sign in.","auth/weak-password":"Password needs at least 6 characters.","auth/invalid-email":"That email doesn’t look right.","auth/network-request-failed":"No internet – connect once to sign in.","auth/too-many-requests":"Too many tries, wait a minute and try again.","auth/operation-not-allowed":"That sign-in method is off in Firebase – turn it on under Security → Authentication → Sign-in method.","auth/unauthorized-domain":"Add your GitHub Pages address in Firebase: Authentication → Settings → Authorized domains.","auth/popup-closed-by-user":"","auth/account-exists-with-different-credential":"This email already signed in another way – use that method."};
+const FB_ERR = {"auth/invalid-credential":"Wrong email or password. New here? Tap Create account.","auth/wrong-password":"Wrong email or password.","auth/user-not-found":"No account with that email yet – tap Create account.","auth/email-already-in-use":"That email already has an account – tap Sign in.","auth/weak-password":"Password needs at least 6 characters.","auth/invalid-email":"That email doesn’t look right.","auth/network-request-failed":"No internet – connect once to sign in.","auth/too-many-requests":"Too many tries, wait a minute and try again.","auth/operation-not-allowed":"That sign-in method is off in Firebase – turn it on under Security → Authentication → Sign-in method.","auth/unauthorized-domain":"Add your GitHub Pages address in Firebase: Authentication → Settings → Authorized domains.","auth/popup-closed-by-user":"","auth/account-exists-with-different-credential":"This email already signed in another way – use that method."};
+async function fbReset(){
+  const e = document.getElementById("fbEmail")?.value.trim();
+  if(!e){ window.fbState = {status:"signedout", msg:"Type your email above first, then tap Forgot password."}; render(); return; }
+  try{ await window.fb.reset(e); window.fbState = {status:"signedout", email:e, ok:true, msg:`Reset link sent to ${e}. Check your inbox (and spam), set a new password, then sign in here.`}; }
+  catch(err){ window.fbState = {status:"signedout", email:e, msg: FB_ERR[err.code] || err.message}; }
+  render();
+}
 async function fbGoogle(){
   if(!window.fb) return;
   try{ await window.fb.google(); }
@@ -1166,6 +1174,7 @@ document.getElementById("view").addEventListener("click", e=>{
   else if(a==="closefolder"){ openFolder = null; render(); }
   else if(a==="fbsignin"){ fbAuth("in"); }
   else if(a==="fbgoogle"){ fbGoogle(); }
+  else if(a==="fbreset"){ fbReset(); }
   else if(a==="fbsignup"){ fbAuth("up"); }
   else if(a==="fbsignout"){ if(confirm("Sign out? Your data stays on this device.")) window.fb?.signOut(); }
   else if(a==="ratingtoggle"){ setRating(el.dataset.f, !ratingOn(el.dataset.f)); render(); }
@@ -1252,7 +1261,9 @@ document.getElementById("view").addEventListener("change", e=>{
 });
 
 bootStorage();
-setTimeout(()=>{ if(rolled) return; rollover(); if(!document.getElementById("view").contains(document.activeElement)) render(); }, 11000);   // fallback if the account never answers
+/* only hold back a redraw while you're typing in a box – a tapped button shouldn't block updates */
+function isTyping(){ const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && document.getElementById("view").contains(a); }
+setTimeout(()=>{ if(rolled) return; rollover(); if(!isTyping()) render(); }, 11000);   // fallback if the account never answers
 render();
 
 /* ---------- sync engine: works with Firebase (offline app) or Claude storage ---------- */
@@ -1293,7 +1304,7 @@ window.startSync = function(adapter, id, kind){
     }
     migrate(); rollover(); if(coversChanged) persistCovers();
     first = false; persistLocal(); setSync(syncLabel(snap));
-    if(!document.activeElement || !document.getElementById("view").contains(document.activeElement)) render();
+    if(!isTyping()) render();
     else renderHeader();
   }, ()=>{ clearTimeout(giveUp); setSync("Couldn’t sync – saving on this device"); });
   if(dirty.size) flush();
@@ -1305,7 +1316,7 @@ window.stopSync = function(){
 };
 addEventListener("online", ()=>{ if(syncKind) setSync("⏳ Syncing…"); if(dirty.size) flush(); });
 addEventListener("offline", ()=>{ if(syncKind) setSync(syncLabel()); });
-addEventListener("fb-change", ()=>{ if(view==="dash" && !document.getElementById("view").contains(document.activeElement)) render(); });
+addEventListener("fb-change", ()=>{ if(view==="dash" && !isTyping()) render(); });
 
 /* Claude storage (when opened inside Claude) */
 (async ()=>{
@@ -1342,6 +1353,7 @@ else{
       signIn: (e,p)=>A.signInWithEmailAndPassword(auth,e,p),
       signUp: (e,p)=>A.createUserWithEmailAndPassword(auth,e,p),
       signOut: ()=>A.signOut(auth),
+      reset: e=>A.sendPasswordResetEmail(auth, e),
       google: async ()=>{
         const provider = new A.GoogleAuthProvider();
         try{ await A.signInWithPopup(auth, provider); }
