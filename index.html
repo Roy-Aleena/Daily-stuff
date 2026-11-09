@@ -809,9 +809,9 @@ function renderPlan(){
     h += `<div class="heading ${its.length?"":"empty"}"><h3><span class="h-emo" aria-hidden="true">${headEmoji(hd.id)}</span>${esc(hd.name)}<span class="h-count">${its.filter(i=>i.done).length}/${its.length}</span></h3><ul class="lines">`;
     for(const t of its){
       const cls = t.done ? "done" : t.moved ? "moved" : t.carried ? "carried" : "";
-      const tag = t.moved && !t.done ? `<span class="tag">moved to next week</span>` : t.carried && !t.done ? `<span class="tag">from last week</span>` : "";
+      const tag = t.moved && !t.done ? `<span class="tag">moved to next week · tap ○ if you finish it here</span>` : t.carried && !t.done ? `<span class="tag">from last week</span>` : "";
       h += `<li class="row ${cls}" data-iid="${t.id}" data-wk="${wk}">
-        <button class="check" data-act="itemcheck" aria-label="${t.done?"Undo":"Done"}: ${esc(t.text)}" aria-pressed="${!!t.done}" ${t.moved&&!t.done?"disabled":""}>${CHECK}</button>
+        <button class="check" data-act="itemcheck" aria-label="${t.done?"Undo":"Done"}: ${esc(t.text)}" aria-pressed="${!!t.done}">${CHECK}</button>
         <div class="name"><span>${esc(t.text)}</span>${tag}</div>
         ${t.done && ratingOn(t.h) ? stars(t.rating, `data-wk="${wk}" data-iid="${t.id}"`) : ""}
         <button class="del" data-act="itemdel" aria-label="Delete ${esc(t.text)}">×</button></li>`;
@@ -1207,7 +1207,21 @@ document.getElementById("view").addEventListener("click", e=>{
   else if(a==="addbook"){ const i = document.getElementById("newBook"); if(i.value.trim()){ settings.books.push({id:"b"+Date.now(), name:i.value.trim(), start:0, goal:50, current:0}); saveSettings(); render(); } }
   else if(a==="itemcheck"||a==="itemdel"){
     const wk = curWeekKey(), w = weeks[wk] = weekOf(wk), id = el.closest("[data-iid]").dataset.iid;
-    if(a==="itemcheck"){ const t = w.items.find(t=>t.id===id); t.done = !t.done; t.doneAt = t.done ? todayKey() : null; }
+    if(a==="itemcheck"){
+      const t = w.items.find(t=>t.id===id);
+      t.done = !t.done; t.doneAt = t.done ? todayKey() : null;
+      // finished it in this week after it was carried forward: pull it back from the later week
+      if(t.done && t.moved){
+        t.moved = false;
+        const oid = t.oid || t.id;
+        for(const [k2, w2] of Object.entries(weeks)){
+          if(k2 <= wk) continue;
+          const before = w2.items.length;
+          w2.items = w2.items.filter(x=>!((x.oid||x.id)===oid && x.carried && !x.done));
+          if(w2.items.length !== before) saveWeek(k2);
+        }
+      }
+    }
     else w.items = w.items.filter(t=>t.id!==id);
     saveWeek(wk); render();
   }
