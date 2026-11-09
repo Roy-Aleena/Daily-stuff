@@ -345,6 +345,21 @@ body.booting .page, body.booting nav.tabs{visibility:hidden}
 .mbar-track{flex:1;width:100%;background:var(--surface-2);border-radius:8px;display:flex;align-items:flex-end;overflow:hidden}
 .mbar-track i{display:block;width:100%;background:var(--primary);border-radius:8px}
 .mbar-l{font-size:11px;font-weight:700;color:var(--muted)}
+
+/* ===== habit groups ===== */
+.hgroup{margin-top:14px;padding:0;overflow:hidden}
+.hg-head{width:100%;display:flex;align-items:center;gap:12px;padding:12px 14px;border:0;background:none;text-align:left;color:var(--text)}
+.hg-emo{width:40px;height:40px;border-radius:13px;background:var(--primary);display:grid;place-items:center;font-size:20px;flex:none}
+.hg-text{flex:1;min-width:0}
+.hg-name{display:block;font-size:16.5px;font-weight:700}
+.hg-bar{display:block;height:5px;max-width:140px;border-radius:4px;background:var(--surface-2);margin-top:6px;overflow:hidden}
+.hg-bar i{display:block;height:100%;background:var(--primary);border-radius:4px;transition:width .3s}
+.hg-count{font-size:12.5px;font-weight:700;color:var(--muted);background:var(--surface-2);border-radius:10px;padding:4px 10px;white-space:nowrap}
+.hgroup.alldone .hg-count{background:var(--primary);color:var(--on-primary)}
+.hg-chev{font-size:22px;color:var(--muted);transform:rotate(90deg);transition:transform .2s;width:16px;text-align:center}
+.hgroup.closed .hg-chev{transform:none}
+.hgroup .lines .row{border-top:1px solid var(--line);border-bottom:0}
+.hgroup .row.habit{padding-left:18px}
 </style>
 </head>
 <body class="booting">
@@ -591,6 +606,17 @@ function migrate(){
     for(const it of w.items||[]){ if(!it.oid){ it.oid = it.id; fix = true; } }
     if(fix) saveWeek(wk);
   }
+  if(!settings.groups){
+    const plan = [["hygiene","🧼","Hygiene",["hygiene","skinam","skinpm"]],["health","💪","Health",["water","gym","walk"]],
+      ["learning","📚","Learning",["read","study","journal","coding","youtube","audio","techj"]],["career","💼","Career",["jobs","kaggle","app"]],["spirit","🙏","Spiritual",["prayer"]]];
+    settings.groups = [];
+    for(const [id,emoji,name,ids] of plan){
+      const mine = settings.habits.filter(x=>ids.includes(x.id) && !x.group);
+      if(!mine.length) continue;
+      settings.groups.push({id, emoji, name}); mine.forEach(x=>x.group = id);
+    }
+    changed = true;
+  }
   if(changed) saveSettings();
 }
 migrate();
@@ -669,38 +695,64 @@ function streakText(){
 const CHECK = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3L13 4.5"/></svg>`;
 const UNIT = {min:"min", pages:"pages", apps:"apps"};
 
+function habitRow(x, k, r){
+  const done = isDone(k,x), t = x.targets[r], v = val(k,x);
+  const check = `<button class="check" data-act="check" data-id="${x.id}" aria-label="${done?"Undo":"Mark done"}: ${esc(x.name)}" aria-pressed="${done}">${CHECK}</button>`;
+  let h = `<li class="row habit ${done?"done":""}"><span class="emo" aria-hidden="true">${habitEmoji(x)}</span>
+    <div class="info"><div class="name">${esc(x.name)}</div>`;
+  if(x.unit!=="check"){
+    const tid = k+"|"+x.id, on = !!timers[tid];
+    h += `<div class="prog"><div class="mini"><i style="width:${Math.min(100,v/t*100)}%"></i></div>
+      <span class="ptext"><input type="number" inputmode="numeric" min="0" value="${v}" data-act="set" data-id="${x.id}" aria-label="${esc(x.name)} amount"> / ${t} ${UNIT[x.unit]}</span></div></div>
+      <div class="ctrls"><button class="step" data-act="add" data-id="${x.id}" aria-label="Add ${x.step||5}">+${x.step||5}</button>
+      ${x.unit==="min" ? `<button class="timer ${on?"on":""}" data-act="timer" data-id="${x.id}" data-tid="${tid}" aria-label="${on?"Stop":"Start"} timer for ${esc(x.name)}">${on?"0:00":"▶"}</button>`:""}</div>`;
+  } else h += `<div class="ptext" style="margin-top:3px">${done?"Done":"Tap the circle when done"}</div></div>`;
+  return h + check + `</li>`;
+}
 function renderToday(){
   const k = key(cur), r = dayOf(k).routine;
   if(editing) return renderEdit();
-  const hs = habitsFor(r);
-  let h = `<ul class="lines">`;
-  if(!hs.length) h += `<li class="empty">No habits in this routine yet. Tap “Edit habits” to add some.</li>`;
-  for(const x of hs){
-    const done = isDone(k,x), t = x.targets[r], v = val(k,x);
-    const check = `<button class="check" data-act="check" data-id="${x.id}" aria-label="${done?"Undo":"Mark done"}: ${esc(x.name)}" aria-pressed="${done}">${CHECK}</button>`;
-    h += `<li class="row habit ${done?"done":""}"><span class="emo" aria-hidden="true">${habitEmoji(x)}</span>
-      <div class="info"><div class="name">${esc(x.name)}</div>`;
-    if(x.unit!=="check"){
-      const tid = k+"|"+x.id, on = !!timers[tid];
-      h += `<div class="prog"><div class="mini"><i style="width:${Math.min(100,v/t*100)}%"></i></div>
-        <span class="ptext"><input type="number" inputmode="numeric" min="0" value="${v}" data-act="set" data-id="${x.id}" aria-label="${esc(x.name)} amount"> / ${t} ${UNIT[x.unit]}</span></div></div>
-        <div class="ctrls"><button class="step" data-act="add" data-id="${x.id}" aria-label="Add ${x.step||5}">+${x.step||5}</button>
-        ${x.unit==="min" ? `<button class="timer ${on?"on":""}" data-act="timer" data-id="${x.id}" data-tid="${tid}" aria-label="${on?"Stop":"Start"} timer for ${esc(x.name)}">${on?"0:00":"▶"}</button>`:""}</div>`;
-    } else h += `<div class="ptext" style="margin-top:3px">${done?"Done":"Tap the circle when done"}</div></div>`;
-    h += check + `</li>`;
+  const hs = habitsFor(r), groups = settings.groups || [];
+  let h = "";
+  if(!hs.length) h = `<ul class="lines"><li class="empty">No habits in this routine yet. Tap “Edit habits” to add some.</li></ul>`;
+  else if(!groups.length) h = `<ul class="lines">${hs.map(x=>habitRow(x,k,r)).join("")}</ul>`;
+  else{
+    const known = new Set(groups.map(g=>g.id));
+    const sections = groups.map(g=>({g, list: hs.filter(x=>x.group===g.id)}));
+    const loose = hs.filter(x=>!x.group || !known.has(x.group));
+    if(loose.length) sections.push({g:{id:"__other", name:"Other", emoji:"✨"}, list: loose});
+    for(const {g, list} of sections){
+      if(!list.length) continue;
+      const done = list.filter(x=>isDone(k,x)).length, all = done===list.length, closed = !!g.collapsed;
+      h += `<div class="card hgroup ${all?"alldone":""} ${closed?"closed":""}">
+        <button class="hg-head" data-act="togglegroup" data-g="${g.id}" aria-expanded="${!closed}">
+          <span class="hg-emo" aria-hidden="true">${esc(g.emoji||"📁")}</span>
+          <span class="hg-text"><span class="hg-name">${esc(g.name)}</span><span class="hg-bar"><i style="width:${done/list.length*100}%"></i></span></span>
+          <span class="hg-count">${all?"✓ ":""}${done}/${list.length}</span><span class="hg-chev" aria-hidden="true">›</span></button>
+        ${closed ? "" : `<ul class="lines">${list.map(x=>habitRow(x,k,r)).join("")}</ul>`}</div>`;
+    }
   }
-  h += `</ul><div class="toolbar"><button class="btn ghost" data-act="edit">Edit habits</button></div>`;
+  h += `<div class="toolbar"><button class="btn ghost" data-act="edit">Edit habits &amp; groups</button></div>`;
   return h;
 }
 
 function renderEdit(){
-  let h = `<section><h2>Edit habits</h2><p class="sub">Leave a routine’s target empty to hide the habit on those days.</p>`;
+  const groups = settings.groups || [];
+  let h = `<section><h2>Groups</h2><p class="sub">Main headings on Today, like Hygiene with your skincare inside. Tap a group on Today to fold it.</p>`;
+  groups.forEach((g,i)=>{
+    h += `<div class="edit" data-gid="${g.id}"><span class="hrow"><input type="text" class="emo-in" data-gf="emoji" value="${esc(g.emoji||"")}" aria-label="Group icon"><input type="text" value="${esc(g.name)}" data-gf="name" aria-label="Group name"></span>
+      <span><button class="del" data-act="gup" aria-label="Move up" ${i?"":"disabled"}>↑</button><button class="del" data-act="delgroup" aria-label="Delete group ${esc(g.name)}">×</button></span>
+      <div class="opts">${(n=>n+" habit"+(n===1?"":"s"))(settings.habits.filter(x=>x.group===g.id).length)}</div></div>`;
+  });
+  h += `<div class="toolbar"><button class="btn ghost" data-act="addgroup">Add a group</button></div>
+    <h2>Habits</h2><p class="sub">Pick a group for each habit. Leave a routine’s target empty to hide it on those days.</p>`;
   for(const x of settings.habits){
     h += `<div class="edit" data-id="${x.id}">
       <input type="text" value="${esc(x.name)}" data-f="name" aria-label="Habit name">
       <button class="del" data-act="delhabit" aria-label="Delete ${esc(x.name)}">×</button>
       <div class="opts">
         <label>Icon <input type="text" class="emo-in" data-f="emoji" value="${esc(habitEmoji(x))}" aria-label="Icon"></label>
+        ${groups.length ? `<label>Group <select data-f="group"><option value="">None</option>${groups.map(g=>`<option value="${g.id}" ${x.group===g.id?"selected":""}>${esc((g.emoji?g.emoji+" ":"")+g.name)}</option>`).join("")}</select></label>` : ""}
         <label>Type <select data-f="unit">
           ${["check","min","pages","apps"].map(u=>`<option value="${u}" ${u===x.unit?"selected":""}>${u==="check"?"Tick box":u}</option>`).join("")}
         </select></label>
@@ -1172,6 +1224,10 @@ document.getElementById("view").addEventListener("click", e=>{
   else if(a==="dashmode"){ dashMode = el.dataset.m; openFolder = null; render(); }
   else if(a==="openfolder"){ if(e.target.closest("[data-stop]")) return; openFolder = el.dataset.f; render(); window.scrollTo(0,0); }
   else if(a==="closefolder"){ openFolder = null; render(); }
+  else if(a==="togglegroup"){ const g = (settings.groups||[]).find(g=>g.id===el.dataset.g); if(g){ g.collapsed = !g.collapsed; saveSettings(); render(); } }
+  else if(a==="addgroup"){ (settings.groups = settings.groups||[]).push({id:"g"+Date.now(), name:"New group", emoji:"📁"}); saveSettings(); render(); }
+  else if(a==="delgroup"){ const id = el.closest("[data-gid]").dataset.gid; settings.groups = settings.groups.filter(g=>g.id!==id); settings.habits.forEach(x=>{ if(x.group===id) delete x.group; }); saveSettings(); render(); }
+  else if(a==="gup"){ const gs = settings.groups, i = gs.findIndex(g=>g.id===el.closest("[data-gid]").dataset.gid); if(i>0){ [gs[i-1],gs[i]] = [gs[i],gs[i-1]]; saveSettings(); render(); } }
   else if(a==="fbsignin"){ fbAuth("in"); }
   else if(a==="fbgoogle"){ fbGoogle(); }
   else if(a==="fbreset"){ fbReset(); }
@@ -1247,7 +1303,8 @@ document.getElementById("view").addEventListener("change", e=>{
   if(t.dataset.hf==="emoji"){ const hd = settings.headings.find(h=>h.id===t.closest("[data-hid]").dataset.hid); hd.emoji = t.value.trim(); saveSettings(); return; }
   if(t.dataset.hf==="rating"){ setRating(t.closest("[data-hid]").dataset.hid, t.checked); return; }
   if(t.dataset.hf==="name"){ const hd = settings.headings.find(h=>h.id===t.closest("[data-hid]").dataset.hid); hd.name = t.value.trim() || hd.name; saveSettings(); return; }
-  const row = t.closest(".edit"); if(!row) return;
+  if(t.dataset.gf){ const g = (settings.groups||[]).find(g=>g.id===t.closest("[data-gid]").dataset.gid); if(g){ g[t.dataset.gf] = t.value.trim() || (t.dataset.gf==="name" ? g.name : ""); saveSettings(); render(); } return; }
+  const row = t.closest(".edit"); if(!row || !row.dataset.id) return;
   const x = H(row.dataset.id), f = t.dataset.f;
   if(f==="name") x.name = t.value.trim() || x.name;
   else if(f==="unit"){ const was = x.unit; x.unit = t.value;
@@ -1256,6 +1313,7 @@ document.getElementById("view").addEventListener("change", e=>{
   else if(f==="wdc"||f==="wec"){ const r = f.slice(0,2); if(t.checked) x.targets[r] = 1; else delete x.targets[r]; }
   else if(f==="wd"||f==="we"){ if(t.value==="") delete x.targets[f]; else x.targets[f] = Number(t.value); }
   else if(f==="emoji") x.emoji = t.value.trim();
+  else if(f==="group"){ if(t.value) x.group = t.value; else delete x.group; }
   else if(f==="step") x.step = Math.max(1, Number(t.value)||5);
   saveSettings(); render();
 });
